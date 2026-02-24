@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>U.S Electric Power Generation</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.4.0/dist/leaflet.css">
+
+  <!-- Google Font -->
+  <link href="http://fonts.googleapis.com/css?family=Lato" rel="stylesheet" type="text/css">
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: whitesmoke;
+      font-family: Lato, sans-serif;
+      color: #0D0000;
+    }
+
+    header {
+      padding: 6px 10px;
+    }
+
+    h1 {
+      display: inline-block;
+      margin-right: 20px;
+      color: #001323;
+    }
+
+    h2 {
+      display: inline-block;
+      color: #001323;
+    }
+
+    #map {
+      width: 80%;
+      height: 540px;
+      margin: 10px auto;
+    }
+
+    footer {
+      padding: 6px 10px;
+      width: 80%;
+      margin: 0 auto 10px auto;
+    }
+
+    footer p {
+      font-size: 1em;
+      color: #001323;
+      margin: 4px 0;
+    }
+
+    /* Layer control label styling to match colors */
+    .legend-biomass {
+      color: green;
+      font-weight: bold;
+    }
+
+    .legend-geothermal {
+      color: purple;
+      font-weight: bold;
+    }
+
+    .legend-solar {
+      color: gold;
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>U.S Electric Power Generation</h1>
+    <h2>Biomass, Geothermal, and Solar Power Plants in the U.S.</h2>
+  </header>
+
+  <div id="map"></div>
+
+  <footer>
+    <p>Map authored by Max Waechter.</p>
+    <p>
+      This map highlights U.S. biomass, geothermal, and solar plants using proportional symbols to show generating capacity in megawatts, helping compare renewable power output and spatial distribution at a glance.
+    </p>
+  </footer>
+
+  <!-- Power plants data -->
+  <script src="power-plants.js"></script>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.4.0/dist/leaflet.js"></script>
+
+  <script>
+    // Base map
+    var map = L.map('map', {
+      center: [36, -94],
+      zoom: 4
+    });
+
+    var tiles = L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> ' +
+                   '&copy; <a href="http://cartodb.com/attributions">CartoDB</a>',
+      subdomains: 'abcd',
+      maxZoom: 19
+    }).addTo(map);
+
+    // Helper: get capacity for a specific fuel from feature
+    function getFuelCapacity(feature, fuelName) {
+      if (!feature.properties || !feature.properties.fuel_source) { return 0; }
+      var fs = feature.properties.fuel_source;
+      return fs[fuelName] ? Number(fs[fuelName]) : 0;
+    }
+
+    // Radius function (adjusted for relatively small outputs)
+    function getRadius(capacityMw) {
+      // Simple square-root scaling with a multiplier so small plants are visible
+      if (!capacityMw || capacityMw <= 0) { return 2; }
+      var radius = Math.sqrt(capacityMw / Math.PI);
+      return radius * 0.6;  // tweak factor per assignment template
+    }
+
+    // Generic pointToLayer factory
+    function makePointToLayer(color, fuelName) {
+      return function (feature, latlng) {
+        var cap = getFuelCapacity(feature, fuelName);
+        return L.circleMarker(latlng, {
+          color: color,
+          weight: 2,
+          fillColor: color,
+          fillOpacity: 0.7,
+          radius: getRadius(cap)
+        });
+      };
+    }
+
+    // Generic filter for a given fuel
+    function makeFilter(fuelName) {
+      return function (feature, layer) {
+        var cap = getFuelCapacity(feature, fuelName);
+        return cap > 0;
+      };
+    }
+
+    // Popup and interaction
+    function onEachFeatureFactory(fuelName) {
+      return function (feature, layer) {
+        var name = feature.properties.plant_name;
+        var totalCap = feature.properties.capacity_mw;
+        var fuelCap = getFuelCapacity(feature, fuelName);
+
+        // Build a concise popup with relevant info
+        var popup = '<b>' + name + '</b><br>' +
+                    'Total capacity: ' + totalCap.toLocaleString() + ' MW<br>' +
+                    fuelName + ' capacity: ' + fuelCap.toLocaleString() + ' MW';
+
+        layer.bindPopup(popup);
+
+        // Simple hover effect
+        layer.on('mouseover', function () {
+          this.setStyle({ fillOpacity: 1.0 });
+        });
+        layer.on('mouseout', function () {
+          this.setStyle({ fillOpacity: 0.7 });
+        });
+      };
+    }
+
+    // Create three distinct layers
+    var biomassLayer = L.geoJson(plants, {
+      pointToLayer: makePointToLayer('green', 'Biomass'),
+      filter: makeFilter('Biomass'),
+      onEachFeature: onEachFeatureFactory('Biomass')
+    });
+
+    var geothermalLayer = L.geoJson(plants, {
+      pointToLayer: makePointToLayer('purple', 'Geothermal'),
+      filter: makeFilter('Geothermal'),
+      onEachFeature: onEachFeatureFactory('Geothermal')
+    });
+
+    var solarLayer = L.geoJson(plants, {
+      pointToLayer: makePointToLayer('gold', 'Solar'),
+      filter: makeFilter('Solar'),
+      onEachFeature: onEachFeatureFactory('Solar')
+    });
+
+    // Add layers to map
+    biomassLayer.addTo(map);
+    geothermalLayer.addTo(map);
+    solarLayer.addTo(map);
+
+    // Layer control with styled labels
+    var overlays = {};
+    overlays['<span class="legend-biomass">Biomass</span>'] = biomassLayer;
+    overlays['<span class="legend-geothermal">Geothermal</span>'] = geothermalLayer;
+    overlays['<span class="legend-solar">Solar</span>'] = solarLayer;
+
+    L.control.layers(null, overlays, { collapsed: false }).addTo(map);
+  </script>
+</body>
+</html>
