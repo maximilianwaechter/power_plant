@@ -45,12 +45,18 @@
       padding: 6px 10px;
       width: 80%;
       margin: 0 auto 10px auto;
+      text-align: left;
     }
 
     footer p {
-      font-size: 1em;
-      color: #001323;
+      font-size: 0.8em;
+      color: #445566;
+      line-height: 1.4;
       margin: 4px 0;
+    }
+
+    footer .footer-note-title {
+      font-weight: bold;
     }
 
     /* Layer control label styling to match colors */
@@ -81,8 +87,15 @@
 
   <footer>
     <p>Map authored by Max Waechter.</p>
+    <p class="footer-note-title">Design principle applied: visual hierarchy and clarity.</p>
     <p>
-      This map highlights U.S. biomass, geothermal, and solar plants using proportional symbols to show generating capacity in megawatts, helping compare renewable power output and spatial distribution at a glance.
+      I increased the size contrast between small and large plants and used different symbol shapes
+      (circles for biomass, squares for geothermal, and triangles for solar) so the most important
+      plants and categories stand out more clearly.
+    </p>
+    <p>
+      This makes it easier for users to quickly see which plants have higher capacity and to
+      distinguish energy types at a glance, improving the overall reading of the map.
     </p>
   </footer>
 
@@ -113,25 +126,68 @@
       return fs[fuelName] ? Number(fs[fuelName]) : 0;
     }
 
-    // Radius function (adjusted for relatively small outputs)
+    // Stronger radius scaling for more hierarchy
     function getRadius(capacityMw) {
-      // Simple square-root scaling with a multiplier so small plants are visible
-      if (!capacityMw || capacityMw <= 0) { return 2; }
+      if (!capacityMw || capacityMw <= 0) { return 3; }
+      // emphasize differences: stronger scaling factor
       var radius = Math.sqrt(capacityMw / Math.PI);
-      return radius * 0.6;  // tweak factor per assignment template
+      return radius * 0.9;
     }
 
-    // Generic pointToLayer factory
-    function makePointToLayer(color, fuelName) {
+    // Simple triangle marker using a custom SVG path
+    function triangleMarker(latlng, options) {
+      var size = options.radius || 8;
+      var color = options.color || '#ffffff';
+      var svg = L.divIcon({
+        className: '',
+        html:
+          '<svg width="' + (size * 2) + '" height="' + (size * 2) + '" viewBox="0 0 20 20">' +
+          '<polygon points="10,2 18,18 2,18" ' +
+          'fill="' + options.fillColor + '" stroke="' + color + '" stroke-width="2" fill-opacity="' + options.fillOpacity + '"/>' +
+          '</svg>',
+        iconSize: [size * 2, size * 2],
+        iconAnchor: [size, size]
+      });
+      return L.marker(latlng, { icon: svg });
+    }
+
+    // Generic pointToLayer with different shapes per fuel
+    function makePointToLayer(fuelName) {
       return function (feature, latlng) {
         var cap = getFuelCapacity(feature, fuelName);
-        return L.circleMarker(latlng, {
-          color: color,
-          weight: 2,
-          fillColor: color,
-          fillOpacity: 0.7,
-          radius: getRadius(cap)
-        });
+        var r = getRadius(cap);
+
+        if (fuelName === 'Biomass') {
+          // circles
+          return L.circleMarker(latlng, {
+            color: 'green',
+            weight: 2,
+            fillColor: 'green',
+            fillOpacity: 0.8,
+            radius: r
+          });
+        } else if (fuelName === 'Geothermal') {
+          // squares via DivIcon
+          var size = r * 2;
+          var squareIcon = L.divIcon({
+            className: '',
+            html:
+              '<div style="width:' + size + 'px;height:' + size + 'px;' +
+              'background: purple;opacity:0.8;border:2px solid purple;' +
+              'transform: translate(-50%, -50%);"></div>',
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2]
+          });
+          return L.marker(latlng, { icon: squareIcon });
+        } else if (fuelName === 'Solar') {
+          // triangles
+          return triangleMarker(latlng, {
+            radius: r,
+            color: 'gold',
+            fillColor: 'gold',
+            fillOpacity: 0.8
+          });
+        }
       };
     }
 
@@ -150,38 +206,29 @@
         var totalCap = feature.properties.capacity_mw;
         var fuelCap = getFuelCapacity(feature, fuelName);
 
-        // Build a concise popup with relevant info
         var popup = '<b>' + name + '</b><br>' +
                     'Total capacity: ' + totalCap.toLocaleString() + ' MW<br>' +
                     fuelName + ' capacity: ' + fuelCap.toLocaleString() + ' MW';
 
         layer.bindPopup(popup);
-
-        // Simple hover effect
-        layer.on('mouseover', function () {
-          this.setStyle({ fillOpacity: 1.0 });
-        });
-        layer.on('mouseout', function () {
-          this.setStyle({ fillOpacity: 0.7 });
-        });
       };
     }
 
     // Create three distinct layers
     var biomassLayer = L.geoJson(plants, {
-      pointToLayer: makePointToLayer('green', 'Biomass'),
+      pointToLayer: makePointToLayer('Biomass'),
       filter: makeFilter('Biomass'),
       onEachFeature: onEachFeatureFactory('Biomass')
     });
 
     var geothermalLayer = L.geoJson(plants, {
-      pointToLayer: makePointToLayer('purple', 'Geothermal'),
+      pointToLayer: makePointToLayer('Geothermal'),
       filter: makeFilter('Geothermal'),
       onEachFeature: onEachFeatureFactory('Geothermal')
     });
 
     var solarLayer = L.geoJson(plants, {
-      pointToLayer: makePointToLayer('gold', 'Solar'),
+      pointToLayer: makePointToLayer('Solar'),
       filter: makeFilter('Solar'),
       onEachFeature: onEachFeatureFactory('Solar')
     });
